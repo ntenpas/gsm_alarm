@@ -188,15 +188,30 @@ void loop() {
   if (endofmsg == 1) {
     if (checkforhorn(newmsg))
       Serial.println("horn!");
-    if (checkforon(newmsg))
+    if (checkforon(newmsg)) {
       Serial.println("on!");
-    if (checkforoff(newmsg))
+      moved = 0;
+    }
+    if (checkforoff(newmsg)) {
       Serial.println("off!");
+      moved = 2;
+    }
     delay(130);
     sim.println("AT+CMGD=1,4");
     endofmsg = 0;
     for (addr = 0; addr <= 3; ++addr)
       newmsg[addr] = '\0';
+  }
+  if (moved == 1) {
+    Serial.println("sending a text");
+    sim.println("AT+CMGF=1");
+    delay(130);
+    sim.println(sendcmd);
+    delay(130);
+    sim.print("moved");
+    delay(130);
+    sim.print(char(26));
+    moved = 2;
   }
 }
 
