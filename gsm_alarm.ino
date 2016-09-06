@@ -16,12 +16,21 @@ int nl;
 // nl == 1 is look for newline before message
 // nl == 2 is during message
 // reset to zero after message's nl
-const int MPU_addr=0x68;
-int16_t AcX,AcY,AcZ,Tmp,GyX,GyY,GyZ;
-int16_t oldAcX,oldAcY,oldAcZ;
+//const int MPU_addr=0x68;
+//int16_t AcX,AcY,AcZ,Tmp,GyX,GyY,GyZ;
+//int16_t oldAcX,oldAcY,oldAcZ;
+int pulseX, pulseY;
+long int aX, aY;
+//int old_aX, old_aY;
+long int avg_aX, avg_aY;
+long int old_aX[20];
+long int old_aY[20];
 int count;
 int moved;
+int horn;
 int grab;
+long int horncount;
+int horntime;
 int simavail;
 
 int checkfornew(char *cp);
@@ -47,22 +56,55 @@ void setup() {
     newmsg[addr] = '\0';
   for (addr = 0; addr <= 7; ++addr)
     msgalert[addr] = '\0';
+
+  /*
   Wire.begin();
   Wire.beginTransmission(MPU_addr);
   Wire.write(0x6B); // PWR_MGMT_1 register
   Wire.write(0); // set to zero (wakes up the MPU_6050)
   Wire.endTransmission(true);
+  */
+
+  pinMode(2, INPUT);
+  pinMode(3, INPUT);
+  
+  pinMode(4, OUTPUT);
+  digitalWrite(4, LOW);
+
+  pinMode(9, OUTPUT); 
+  digitalWrite(9, LOW);
+  delay(1000);
+  digitalWrite(9, HIGH);
+  delay(2000);
+  digitalWrite(9, LOW);
+  delay(3000);
+  
   Serial.begin(9600);
+  /*
   AcX = 0;
   AcY = 0;
   AcZ = 0;
   oldAcX = 0;
   oldAcY = 0;
   oldAcZ = 0;
-  count = 0;
+  */
+  aX = 0;
+  aY = 0;
+  //old_aX = 0;
+  //old_aY = 0;
+  avg_aX = 0;
+  avg_aY = 0;
+  count = -20;
   moved = 0;
+  horn = 0;
   grab = 0;
+  horncount = 0;
+  horntime = 0;
   simavail = 0;
+  for (int i = 0; i < 20; ++i) {
+    old_aX[i] = 0;
+    old_aY[i] = 0;
+  }
 }
 
 void loop() {
@@ -73,6 +115,7 @@ void loop() {
     c = Serial.read();
     if (c == 'd') {
       sim.println("AT+CMGD=1,4");
+      Serial.println("deleting");
     }
     if (c == 's') {
       sim.println("AT+CBC");
@@ -96,8 +139,37 @@ void loop() {
     }
   }
   */
+  
+  if (horn == 1 && horntime < 10) {
+    if (horncount == 0) {
+      digitalWrite(4, HIGH);
+      //Serial.println("beep high");
+      ++horntime;
+    }
+    else if (horncount == 10000) {
+      digitalWrite(4, LOW);
+      //Serial.println("beep low");
+    }
+    //Serial.println(horncount);
+    horncount = (horncount > 20000) ? 0 : (horncount + 1);
+  }
+  else if (horntime >= 10) {
+    horn = 0;
+    horntime = 0;
+    moved = 0;
+    horn = 0;
+    count = 0;
+    for (int i = 0; i < 20; ++i) {
+      old_aX[i] = 0;
+      old_aY[i] = 0;
+    }
+    avg_aX = 0;
+    avg_aY = 0;
+    digitalWrite(4, LOW);
+  }
   if (grab == 0 && simavail == 0) {
     // movement
+    /*
     Wire.beginTransmission(MPU_addr);
     Wire.write(0x3B);  // starting with register 0x3B (ACCEL_XOUT_H)
     Wire.endTransmission(false);
@@ -112,6 +184,12 @@ void loop() {
     GyX=Wire.read()<<8|Wire.read();  // 0x43 (GYRO_XOUT_H) & 0x44 (GYRO_XOUT_L)
     GyY=Wire.read()<<8|Wire.read();  // 0x45 (GYRO_YOUT_H) & 0x46 (GYRO_YOUT_L)
     GyZ=Wire.read()<<8|Wire.read();  // 0x47 (GYRO_ZOUT_H) & 0x48 (GYRO_ZOUT_L)
+    Serial.print("x: ");
+    Serial.println(AcX);
+    Serial.print("y: ");
+    Serial.println(AcY);
+    Serial.print("z: ");
+    Serial.println(AcZ);
     if (count < 2)
       ++count;
     if (count == 2 && !moved) {
@@ -128,6 +206,78 @@ void loop() {
         moved = 1;
       }
     }
+    */
+
+    //old_aX = aX;
+    //old_aY = aY;
+    for (int i = 0; i < 19; ++i) {
+      old_aX[i] = old_aX[i + 1];
+      old_aY[i] = old_aY[i + 1];
+    }
+    old_aX[19] = aX;
+    old_aY[19] = aY;
+    avg_aX = 0;
+    avg_aY = 0;
+    for (int i = 0; i < 20; ++i) {
+      avg_aX += old_aX[i];
+      avg_aY += old_aY[i];
+    }
+    avg_aX /= 20;
+    avg_aY /= 20;
+    pulseX = pulseIn(2, HIGH);
+    pulseY = pulseIn(3, HIGH);
+    aX = ((pulseX / 10) - 500) * 8;
+    aY = ((pulseY / 10) - 500) * 8;
+    /*
+    Serial.print(aX);
+    Serial.print("\t");
+    Serial.println(aY);
+    */
+    //if (count < 2)
+    //  ++count;
+    //if (count == 2 && !moved) {
+    if (count < 21) {
+      ++count; 
+    }
+    //if (count == 21)
+    //  Serial.println("count == 21");
+    if (count == 21 && !moved) {
+      if (aX < (avg_aX - 30) || aX > (avg_aX + 30)) {
+        /*
+        Serial.print("count: ");
+        Serial.println(count);
+        Serial.println("X moved");
+        Serial.print("avg_aX: ");
+        Serial.println(avg_aX);
+        for (int i = 0; i < 19; ++i) {
+          Serial.println(old_aX[i]);
+        }
+        Serial.print("aX: ");
+        Serial.println(aX);
+        Serial.print("diff: ");
+        Serial.println(aX - avg_aX);
+        */
+        moved = 1;
+      }
+      if (aY < (avg_aY - 30) || aY > (avg_aY + 30)) {
+        /*
+        Serial.print("count: ");
+        Serial.println(count);
+        Serial.println("Y moved");
+        Serial.print("avg_aY: ");
+        Serial.println(avg_aY);
+        for (int i = 0; i < 19; ++i) {
+          Serial.println(old_aY[i]);
+        }
+        Serial.print("aY: ");
+        Serial.println(aY);
+        Serial.print("diff: ");
+        Serial.println(aY - avg_aY);
+        */
+        moved = 1;
+      }
+    }
+    
     
     //Serial.print("AcX = "); Serial.print(AcX);
     //Serial.print(" | AcY = "); Serial.print(AcY);
@@ -186,15 +336,28 @@ void loop() {
     simavail = 0;
   }
   if (endofmsg == 1) {
-    if (checkforhorn(newmsg))
+    if (checkforhorn(newmsg)) {
       Serial.println("horn!");
+      horn = 1;
+    }
     if (checkforon(newmsg)) {
       Serial.println("on!");
       moved = 0;
+      horn = 0;
+      count = 0;
+      for (int i = 0; i < 20; ++i) {
+        old_aX[i] = 0;
+        old_aY[i] = 0;
+      }
+      avg_aX = 0;
+      avg_aY = 0;
+      digitalWrite(4, LOW);
     }
     if (checkforoff(newmsg)) {
       Serial.println("off!");
       moved = 2;
+      horn = 0;
+      digitalWrite(4, LOW);
     }
     delay(130);
     sim.println("AT+CMGD=1,4");
@@ -211,6 +374,7 @@ void loop() {
     sim.print("moved");
     delay(130);
     sim.print(char(26));
+    horn = 1;
     moved = 2;
   }
 }
